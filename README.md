@@ -1,20 +1,21 @@
 # wazuh-shuffle-ssh-bruteforce-response
-Proyek ini mensimulasikan serangan brute force SSH pada VM Ubuntu Server, mendeteksinya secara real-time menggunakan Wazuh (SIEM), dan melakukan pemblokiran IP secara otomatis melalui playbook Shuffle (SOAR).
+
+This project simulates an SSH brute force attack against an Ubuntu Server VM, detects it in real time using Wazuh (SIEM), and automatically blocks the attacking IP through a Shuffle (SOAR) playbook.
  
-## 📌 Latar Belakang
+## 📌 Background
  
-SSH adalah salah satu service yang paling sering jadi target brute force di server yang terekspos ke internet. Proyek ini menunjukkan alur deteksi-hingga-respons (detect-to-response) otomatis terhadap serangan brute force SSH, tanpa intervensi manual analyst, sekaligus mengukur seberapa cepat sistem bereaksi dibandingkan proses manual.
+SSH is one of the most commonly targeted services for brute force attacks on internet-facing servers. This project demonstrates a full detect-to-response pipeline for SSH brute force attacks, without manual analyst intervention, while also measuring how much faster the automated response is compared to a manual process.
  
-## 🎯 Tujuan
+## 🎯 Objectives
  
-- Mendeteksi percobaan login SSH berulang (failed password) pada VM Ubuntu Server menggunakan Wazuh
-- Membangun playbook otomatis di Shuffle yang memblokir IP penyerang setelah melewati threshold tertentu
-- Mengirim notifikasi real-time ke analyst saat blokir terjadi
-- Mengukur Mean Time to Detect (MTTD) dan Mean Time to Respond (MTTR) dibanding proses manual
-## 🏗️ Arsitektur
+- Detect repeated SSH login attempts (failed password) on an Ubuntu Server VM using Wazuh
+- Build an automated Shuffle playbook that blocks the attacker's IP once it crosses a defined threshold
+- Send real-time notifications to the analyst when a block occurs
+- Measure Mean Time to Detect (MTTD) and Mean Time to Respond (MTTR) compared to a manual process
+## 🏗️ Architecture
  
 ```
-[Attacker: Hydra] --(SSH brute force)--> [Target: VM Ubuntu Server]
+[Attacker: Hydra] --(SSH brute force)--> [Target: Ubuntu Server VM]
                                                     |
                                           (/var/log/auth.log)
                                                     v
@@ -23,83 +24,83 @@ SSH adalah salah satu service yang paling sering jadi target brute force di serv
                                           (forward log to)
                                                     v
                                           [Wazuh Manager]
-                                          (rule 5710/5712 + custom rule threshold)
+                                          (rule 5710/5712 + custom threshold rule)
                                                     |
                                           (alert via webhook/integration)
                                                     v
                                           [Shuffle Playbook]
-                                          1. Cek reputasi IP di AbuseIPDB
+                                          1. Check IP reputation via AbuseIPDB
                                           2. Block IP (iptables / ufw / firewall)
-                                          3. Kirim notifikasi (Telegram/Slack/Email)
+                                          3. Send notification (Telegram/Slack/Email)
                                                     v
                                           [Analyst Notification]
 ```
  
 ## 🛠️ Tools & Stack
  
-| Komponen | Tools |
+| Component | Tools |
 |---|---|
-| Target | VM Ubuntu Server (SSH service) |
-| Simulasi serangan | Hydra |
-| SIEM | Wazuh (Manager + Agent di Ubuntu VM) |
+| Target | Ubuntu Server VM (SSH service) |
+| Attack simulation | Hydra |
+| SIEM | Wazuh (Manager + Agent on Ubuntu VM) |
 | SOAR | Shuffle |
 | Threat Intelligence | AbuseIPDB API |
-| Notifikasi | Telegram Bot API |
-| Blocking | iptables / ufw (dieksekusi via Wazuh active response atau Shuffle SSH command) |
+| Notification | Telegram Bot API |
+| Blocking | iptables / ufw (executed via Wazuh active response or a Shuffle SSH command) |
  
-## ⚙️ Cara Kerja
+## ⚙️ How It Works
  
-1. **Setup target** — VM Ubuntu Server dengan SSH service aktif, Wazuh agent terinstal dan terhubung ke Wazuh Manager
-2. **Simulasi serangan** — Hydra menjalankan brute force terhadap port SSH VM target dengan wordlist username/password
-3. **Deteksi** — Wazuh agent membaca `/var/log/auth.log`, rule bawaan (SSHD) atau custom rule mendeteksi jumlah failed password melebihi threshold (misal 5x dalam 1 menit) dari IP yang sama
-4. **Trigger** — Wazuh mengirim alert ke Shuffle lewat webhook/integration
-5. **Enrichment** — Shuffle mengecek reputasi IP penyerang via AbuseIPDB
-6. **Auto-response** — Jika confidence score tinggi, Shuffle mengeksekusi block IP (via SSH command ke VM untuk menjalankan `iptables`/`ufw`, atau memicu Wazuh active response)
-7. **Notifikasi** — Shuffle mengirim ringkasan insiden (IP, waktu, jumlah percobaan, status block) ke Telegram/Slack analyst
-## 📊 Hasil & Evaluasi
+1. **Target setup** — Ubuntu Server VM with SSH enabled, Wazuh agent installed and connected to the Wazuh Manager
+2. **Attack simulation** — Hydra runs a brute force attack against the target VM's SSH port using a username/password wordlist
+3. **Detection** — The Wazuh agent reads `/var/log/auth.log`; a built-in SSHD rule or custom rule detects failed password attempts exceeding a threshold (e.g. 5 attempts within 1 minute) from the same IP
+4. **Trigger** — Wazuh sends an alert to Shuffle via webhook/integration
+5. **Enrichment** — Shuffle checks the attacker's IP reputation via AbuseIPDB
+6. **Auto-response** — If the confidence score is high, Shuffle executes the IP block (via an SSH command to the VM running `iptables`/`ufw`, or by triggering Wazuh active response)
+7. **Notification** — Shuffle sends an incident summary (IP, timestamp, attempt count, block status) to the analyst via Telegram/Slack
+## 📊 Results & Evaluation
  
-| Metrik | Manual | Otomatis (Wazuh + Shuffle) |
+| Metric | Manual | Automated (Wazuh + Shuffle) |
 |---|---|---|
-| MTTD (Mean Time to Detect) | *isi setelah pengujian* | *isi setelah pengujian* |
-| MTTR (Mean Time to Respond) | *isi setelah pengujian* | *isi setelah pengujian* |
+| MTTD (Mean Time to Detect) | *fill in after testing* | *fill in after testing* |
+| MTTR (Mean Time to Respond) | *fill in after testing* | *fill in after testing* |
  
-> Catatan: isi tabel di atas dengan hasil pengujian aktual (bandingkan waktu deteksi manual oleh analyst vs waktu deteksi otomatis oleh Wazuh, dan waktu respons manual vs otomatis oleh Shuffle).
+> Note: fill in the table above with actual test results (compare manual analyst detection time vs. Wazuh's automated detection time, and manual response time vs. Shuffle's automated response time).
  
-## 📸 Dokumentasi
+## 📸 Documentation
  
-- [ ] Screenshot Wazuh alert saat SSH brute force terdeteksi
-- [ ] Screenshot Shuffle playbook (workflow diagram)
-- [ ] Screenshot notifikasi Telegram/Slack
-- [ ] Isi `/var/log/auth.log` sebelum dan sesudah IP diblokir
-- [ ] Output `iptables -L` / `ufw status` menunjukkan IP ter-block
-- [ ] Video demo singkat (opsional, sangat direkomendasikan)
-## 🚀 Cara Menjalankan (Reproduksi)
+- [ ] Screenshot of the Wazuh alert when SSH brute force is detected
+- [ ] Screenshot of the Shuffle playbook (workflow diagram)
+- [ ] Screenshot of the Telegram/Slack notification
+- [ ] `/var/log/auth.log` contents before and after the IP is blocked
+- [ ] `iptables -L` / `ufw status` output showing the blocked IP
+- [ ] Short demo video (optional, highly recommended)
+## 🚀 How to Reproduce
  
 ```bash
-# 1. Jalankan simulasi brute force SSH
+# 1. Run the SSH brute force simulation
 hydra -l root -P wordlist.txt ssh://<target-vm-ip>
  
-# 2. Pantau alert di Wazuh dashboard
-# Login ke Wazuh dashboard > Security Events > filter by rule group "authentication_failures"
+# 2. Monitor alerts in the Wazuh dashboard
+# Log in to the Wazuh dashboard > Security Events > filter by rule group "authentication_failures"
  
-# 3. Cek eksekusi playbook di Shuffle
-# Login ke Shuffle > Workflows > lihat execution log
+# 3. Check playbook execution in Shuffle
+# Log in to Shuffle > Workflows > view execution log
  
-# 4. Verifikasi blocking di VM target
+# 4. Verify the block on the target VM
 sudo iptables -L -n | grep <attacker-ip>
-# atau
+# or
 sudo ufw status | grep <attacker-ip>
 ```
  
-## 📁 Struktur Repo
+## 📁 Repo Structure
  
 ```
 .
 ├── wazuh/
-│   ├── custom-rules/         # Custom rule XML untuk deteksi SSH brute force
-│   └── ossec-agent-conf/     # Konfigurasi agent (log path /var/log/auth.log)
+│   ├── custom-rules/         # Custom rule XML for SSH brute force detection
+│   └── ossec-agent-conf/     # Agent config (log path /var/log/auth.log)
 ├── shuffle/
-│   └── playbook-export.json  # Export workflow Shuffle
+│   └── playbook-export.json  # Exported Shuffle workflow
 ├── attack-simulation/
 │   └── wordlist.txt
 ├── docs/
@@ -107,15 +108,15 @@ sudo ufw status | grep <attacker-ip>
 └── README.md
 ```
  
-## ⚠️ Catatan Etika & Keamanan
+## ⚠️ Ethics & Safety Note
  
-Simulasi serangan hanya dilakukan pada VM milik sendiri dalam lingkungan lab tertutup (isolated network / NAT internal), bukan terhadap sistem pihak ketiga atau yang terekspos ke internet publik.
+Attack simulations were performed only against a self-owned VM in an isolated lab environment (internal NAT network), not against any third-party system or a publicly internet-facing host.
  
-## 🔮 Pengembangan Selanjutnya
+## 🔮 Future Work
  
-- Integrasi dengan proyek deteksi SQL Injection dan Web Shell Upload (target: aplikasi PHP-MySQL) sebagai bagian dari sistem Automated Incident Response yang lebih besar
-- Menambahkan adaptive branching (auto-block hanya jika confidence tinggi, selain itu eskalasi ke analyst)
-- Dashboard visualisasi MTTD/MTTR
+- Integrate with the SQL Injection and Web Shell Upload detection projects (target: a PHP-MySQL application) as part of a larger Automated Incident Response system
+- Add adaptive branching (auto-block only on high confidence, otherwise escalate to an analyst)
+- Build an MTTD/MTTR visualization dashboard
 ## 👤 Author
  
 Fransiskus Sutanto (Frans)
