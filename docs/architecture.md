@@ -70,7 +70,7 @@ flowchart LR
 
 | Node | Role | Network | Access |
 |---|---|---|---|
-| Attacker VM | Kali + Hydra | `192.168.56.10/24` (Host-Only / NAT lab) | Only to Target:22 |
+| Attacker VM | Host + Ncrack | `192.168.56.10/24` (Host-Only / NAT lab) | Only to Target:22 |
 | Target VM | Ubuntu Server + sshd + Wazuh Agent | `192.168.56.20/24` | 22 (SSH), 1514 (to Manager) |
 | Wazuh Manager | SIEM | `192.168.56.30` or cloud | 1514, 55000 (API), 443 (Dashboard) |
 | Shuffle | SOAR (cloud SaaS / self-hosted) | Internet / lab | Webhook inbound, egress to Target:22 & Discord |
