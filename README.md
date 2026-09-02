@@ -13,7 +13,16 @@ SSH is one of the most commonly targeted services for brute force attacks on int
 - Send real-time notifications to the analyst when a block occurs
 - Measure Mean Time to Detect (MTTD) and Mean Time to Respond (MTTR) compared to a manual process
 ## 🏗️ Architecture
- 
+
+> **Full deep-dive:** See [`docs/architecture.md`](docs/architecture.md) for detailed components, data flow, detection rules, and Discord notification design.
+
+```
+[Attacker: Hydra] --(SSH brute force)--> [Target: Ubuntu Server VM] --> [Wazuh Agent] --> [Wazuh Manager] --> [Shuffle Playbook] --> [Discord #soc-alerts]
+```
+
+<details>
+<summary>ASCII diagram (fallback)</summary>
+
 ```
 [Attacker: Hydra] --(SSH brute force)--> [Target: Ubuntu Server VM]
                                                     |
@@ -31,10 +40,11 @@ SSH is one of the most commonly targeted services for brute force attacks on int
                                           [Shuffle Playbook]
                                           1. Check IP reputation via AbuseIPDB
                                           2. Block IP (iptables / ufw / firewall)
-                                          3. Send notification (Telegram/Slack/Email)
+                                          3. Send notification (Discord Webhook)
                                                     v
-                                          [Analyst Notification]
+                                          [Discord #soc-alerts]
 ```
+</details>
  
 ## 🛠️ Tools & Stack
  
@@ -45,7 +55,7 @@ SSH is one of the most commonly targeted services for brute force attacks on int
 | SIEM | Wazuh (Manager + Agent on Ubuntu VM) |
 | SOAR | Shuffle |
 | Threat Intelligence | AbuseIPDB API |
-| Notification | Telegram Bot API |
+| Notification | Discord Webhook (`#soc-alerts`) |
 | Blocking | iptables / ufw (executed via Wazuh active response or a Shuffle SSH command) |
  
 ## ⚙️ How It Works
@@ -56,7 +66,7 @@ SSH is one of the most commonly targeted services for brute force attacks on int
 4. **Trigger** — Wazuh sends an alert to Shuffle via webhook/integration
 5. **Enrichment** — Shuffle checks the attacker's IP reputation via AbuseIPDB
 6. **Auto-response** — If the confidence score is high, Shuffle executes the IP block (via an SSH command to the VM running `iptables`/`ufw`, or by triggering Wazuh active response)
-7. **Notification** — Shuffle sends an incident summary (IP, timestamp, attempt count, block status) to the analyst via Telegram/Slack
+7. **Notification** — Shuffle sends an incident summary (IP, timestamp, attempt count, block status) to the analyst via Discord Webhook (`#soc-alerts` embed)
 ## 📊 Results & Evaluation
  
 | Metric | Manual | Automated (Wazuh + Shuffle) |
@@ -70,7 +80,7 @@ SSH is one of the most commonly targeted services for brute force attacks on int
  
 - [ ] Screenshot of the Wazuh alert when SSH brute force is detected
 - [ ] Screenshot of the Shuffle playbook (workflow diagram)
-- [ ] Screenshot of the Telegram/Slack notification
+- [ ] Screenshot of the Discord notification (embed in `#soc-alerts`)
 - [ ] `/var/log/auth.log` contents before and after the IP is blocked
 - [ ] `iptables -L` / `ufw status` output showing the blocked IP
 - [ ] Short demo video (optional, highly recommended)
@@ -104,6 +114,7 @@ sudo ufw status | grep <attacker-ip>
 ├── attack-simulation/
 │   └── wordlist.txt
 ├── docs/
+│   ├── architecture.md       # Detailed architecture (components, flow, Discord design)
 │   └── screenshots/
 └── README.md
 ```
