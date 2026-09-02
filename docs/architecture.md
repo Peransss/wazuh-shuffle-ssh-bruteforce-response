@@ -1,25 +1,25 @@
 # Architecture — SSH Brute Force Automated Response (Wazuh + Shuffle)
 
-> **Scope:** Deteksi dan respons otomatis SSH brute force di lab terisolasi menggunakan Wazuh (SIEM) dan Shuffle (SOAR). Dokumen ini adalah *single source of truth* arsitektur; ringkasan ada di [`README.md`](../README.md).
+> **Scope:** Automated detection and response for SSH brute force attacks in an isolated lab environment using Wazuh (SIEM) and Shuffle (SOAR). This document is the *single source of truth* for architecture; a summary is available in [`README.md`](../README.md).
 
 ---
 
 ## 1. Overview & Goals
 
 ### 1.1 Background
-SSH adalah layanan yang paling sering menjadi target brute force pada server yang terekspos. Proyek ini membangun pipeline *detect-to-response* tanpa intervensi analis manual: Hydra menyerang Ubuntu Server VM, Wazuh mendeteksi, Shuffle memblokir IP dan memberi notifikasi ke Discord.
+SSH is one of the most commonly brute-forced services on internet-facing servers. This project builds a fully automated *detect-to-response* pipeline without manual analyst intervention: Hydra attacks an Ubuntu Server VM, Wazuh detects the activity, and Shuffle automatically blocks the attacker IP and notifies analysts via Discord.
 
 ### 1.2 Goals
-- Deteksi *repeated failed password* SSH pada Ubuntu Server VM secara real-time via Wazuh.
-- Blokir otomatis IP penyerang via playbook Shuffle setelah melewati threshold (mis. 5 percobaan / 60 detik).
-- Enrichment reputasi IP via AbuseIPDB sebelum aksi blokir.
-- Notifikasi real-time ke analis via **Discord Webhook**.
-- Ukur **MTTD** (Mean Time to Detect) dan **MTTR** (Mean Time to Respond) otomatis vs manual.
+- Detect repeated SSH `Failed password` events on an Ubuntu Server VM in real time via Wazuh.
+- Automatically block the attacker IP via a Shuffle playbook once a threshold is crossed (e.g., 5 attempts / 60 seconds).
+- Enrich the attacker IP with AbuseIPDB reputation before blocking.
+- Send real-time notifications to analysts via **Discord Webhook**.
+- Measure **MTTD** (Mean Time to Detect) and **MTTR** (Mean Time to Respond) for automated vs. manual response.
 
 ### 1.3 Non-Goals
-- Hardening SSH global (key-only auth, fail2ban permanen) — di luar pipeline SOAR.
-- Deteksi serangan non-SSH (SQLi, webshell) — direncanakan sebagai integrasi terpisah.
-- Deployment production internet-facing — lab NAT terisolasi saja (lihat §8).
+- Global SSH hardening (key-only auth, permanent fail2ban) — out of scope for the SOAR pipeline.
+- Non-SSH attack detection (SQLi, webshell) — planned as a separate integration.
+- Production internet-facing deployment — isolated lab (NAT/Host-Only) only (see §8).
 
 ---
 
@@ -43,7 +43,7 @@ flowchart LR
     style Discord fill:#e8eaf6,stroke:#283593
 ```
 
-> Fallback ASCII (untuk viewer tanpa Mermaid):
+> Fallback ASCII (for viewers without Mermaid support):
 ```
 [Attacker: Hydra] --(SSH brute force)--> [Target: Ubuntu Server VM]
                                                     |
@@ -68,15 +68,15 @@ flowchart LR
 
 ### 2.2 Topology Mapping
 
-| Node | Role | Network | Akses |
+| Node | Role | Network | Access |
 |---|---|---|---|
-| Attacker VM | Kali + Hydra | `192.168.56.10/24` (Host-Only / NAT lab) | Hanya ke Target:22 |
-| Target VM | Ubuntu Server + sshd + Wazuh Agent | `192.168.56.20/24` | 22 (SSH), 1514 (ke Manager) |
-| Wazuh Manager | SIEM | `192.168.56.30` atau cloud | 1514, 55000 (API), 443 (Dashboard) |
-| Shuffle | SOAR (cloud SaaS / self-host) | Internet / lab | Webhook inbound, egress ke Target:22 & Discord |
-| Discord | Notifikasi | Internet | Webhook URL |
+| Attacker VM | Kali + Hydra | `192.168.56.10/24` (Host-Only / NAT lab) | Only to Target:22 |
+| Target VM | Ubuntu Server + sshd + Wazuh Agent | `192.168.56.20/24` | 22 (SSH), 1514 (to Manager) |
+| Wazuh Manager | SIEM | `192.168.56.30` or cloud | 1514, 55000 (API), 443 (Dashboard) |
+| Shuffle | SOAR (cloud SaaS / self-hosted) | Internet / lab | Webhook inbound, egress to Target:22 & Discord |
+| Discord | Notification | Internet | Webhook URL |
 
-Semua node lab berada di jaringan terisolasi (Host-Only / Internal NAT VirtualBox). Tidak ada eksposur ke internet publik.
+All lab nodes are isolated on a Host-Only / Internal NAT VirtualBox network. No exposure to the public internet.
 
 ---
 
@@ -84,20 +84,20 @@ Semua node lab berada di jaringan terisolasi (Host-Only / Internal NAT VirtualBo
 
 ### 3.1 Target — Ubuntu Server VM
 
-- **OS:** Ubuntu Server 22.04 LTS (SSH enabled, `PasswordAuthentication yes` untuk simulasi).
-- **Service:** `sshd` log ke `/var/log/auth.log` dengan format `Failed password for <user> from <ip> port <port> ssh2`.
-- **Wazuh Agent:** `wazuh-agent` 4.x, terhubung ke Manager via `1514/TCP`. Konfigurasi log di `wazuh/ossec-agent-conf/ossec.conf`:
+- **OS:** Ubuntu Server 22.04 LTS (SSH enabled, `PasswordAuthentication yes` for simulation).
+- **Service:** `sshd` logs to `/var/log/auth.log` with format `Failed password for <user> from <ip> port <port> ssh2`.
+- **Wazuh Agent:** `wazuh-agent` 4.x, connected to the Manager via `1514/TCP`. Log configuration in `wazuh/ossec-agent-conf/ossec.conf`:
   ```xml
   <localfile>
     <log_format>syslog</log_format>
     <location>/var/log/auth.log</location>
   </localfile>
   ```
-- **Blocking capability:** `iptables` / `ufw` terinstal, user Shuffle memiliki akses SSH key terbatas untuk eksekusi `sudo iptables -A INPUT -s <ip> -j DROP`.
+- **Blocking capability:** `iptables` / `ufw` installed; the Shuffle SSH user has a restricted key with `sudo` access for `iptables -A INPUT -s <ip> -j DROP`.
 
 ### 3.2 SIEM — Wazuh Manager
 
-- **Komponen:** `wazuh-manager` (analysisd, remoted), `wazuh-indexer`, `wazuh-dashboard`.
+- **Components:** `wazuh-manager` (analysisd, remoted), `wazuh-indexer`, `wazuh-dashboard`.
 - **Built-in rules:** `5710` (Attempt to login using a non-existent user), `5712` (Failed password), `5716` (Multiple authentication failures).
 - **Custom threshold rule** (`wazuh/custom-rules/local_rules.xml`):
   ```xml
@@ -117,7 +117,7 @@ Semua node lab berada di jaringan terisolasi (Host-Only / Internal NAT VirtualBo
     </rule>
   </group>
   ```
-- **Integrasi Shuffle:** `ossec.conf` di Manager:
+- **Shuffle integration:** `ossec.conf` on the Manager:
   ```xml
   <integration>
     <name>shuffle</name>
@@ -127,11 +127,11 @@ Semua node lab berada di jaringan terisolasi (Host-Only / Internal NAT VirtualBo
     <alert_format>json</alert_format>
   </integration>
   ```
-  Alternatif: `Wazuh → TheHive → Shuffle` atau `Wazuh webhook → Shuffle trigger`.
+  Alternative: `Wazuh → TheHive → Shuffle` or `Wazuh webhook → Shuffle trigger`.
 
 ### 3.3 SOAR — Shuffle Playbook
 
-**Trigger:** `Webhook` — menerima JSON alert Wazuh.
+**Trigger:** `Webhook` — receives the Wazuh alert JSON.
 
 **Workflow (6 steps):**
 
@@ -141,35 +141,35 @@ Semua node lab berada di jaringan terisolasi (Host-Only / Internal NAT VirtualBo
 | 2 | Enrich — AbuseIPDB | HTTP / AbuseIPDB | `src_ip` | `abuseConfidenceScore`, `totalReports`, `isWhitelisted` |
 | 3 | Decision | Shuffle Condition | `score >= 75?` | branch: `auto_block` vs `escalate` |
 | 4a | Block IP (auto) | SSH Command | `iptables -A INPUT -s {{src_ip}} -j DROP && ufw deny from {{src_ip}}` | `block_status` |
-| 4b | Escalate (low score) | Discord (different embed) | — | notifikasi `NEEDS REVIEW` tanpa block |
+| 4b | Escalate (low score) | Discord (different embed) | — | `NEEDS REVIEW` notification without block |
 | 5 | Notify | Discord Webhook | embed JSON | message_id |
-| 6 | Log | Shuffle Datastore | — | simpan untuk MTTR |
+| 6 | Log | Shuffle Datastore | — | stored for MTTR measurement |
 
-**Idempotency:** Sebelum block, cek `iptables -C INPUT -s <ip> -j DROP` agar tidak duplikat.
+**Idempotency:** Before blocking, check `iptables -C INPUT -s <ip> -j DROP` to avoid duplicates.
 
-**Failure handling:** Retry 3x untuk SSH, timeout 10s untuk AbuseIPDB. Jika Discord gagal, log ke Shuffle execution tetap sukses.
+**Failure handling:** 3 retries for SSH, 10s timeout for AbuseIPDB. If Discord fails, the Shuffle execution is still marked successful and logged.
 
-Playbook diekspor di `shuffle/playbook-export.json`.
+Playbook export: `shuffle/playbook-export.json`.
 
 ### 3.4 Threat Intelligence — AbuseIPDB API
 
 - **Endpoint:** `GET https://api.abuseipdb.com/api/v2/check?ipAddress={{src_ip}}&maxAgeInDays=90`
 - **Header:** `Key: $ABUSEIPDB_API_KEY`, `Accept: application/json`
-- **Field penting:** `abuseConfidenceScore` (0–100), `totalReports`, `isWhitelisted`.
-- **Threshold:** `>= 75` → auto-block, `25–74` → escalate dengan konteks, `<25` + `level 12` tetap block (local brute force lebih dipercaya).
-- **Rate limit:** 1000 req/hari (free tier) — cukup untuk lab.
-- **Secret:** `ABUSEIPDB_API_KEY` disimpan sebagai Shuffle Environment variable, bukan di JSON export.
+- **Key fields:** `abuseConfidenceScore` (0–100), `totalReports`, `isWhitelisted`.
+- **Threshold:** `>= 75` → auto-block, `25–74` → escalate with context, `<25` + `level 12` still blocks (local brute-force confidence overrides).
+- **Rate limit:** 1000 req/day (free tier) — sufficient for lab use.
+- **Secret:** `ABUSEIPDB_API_KEY` stored as a Shuffle Environment variable, never in the JSON export.
 
 ### 3.5 Response — iptables / ufw
 
-Dua opsi eksekusi, dipilih **SSH command via Shuffle** sebagai primary:
+Two execution options; **SSH command via Shuffle** is the primary:
 
-| Opsi | Cara | Pro | Kontra |
+| Option | Method | Pros | Cons |
 |---|---|---|---|
-| **A — Shuffle SSH (chosen)** | Shuffle app `SSH` → `sudo iptables -A INPUT -s <ip> -j DROP` | Terpusat di playbook, auditable, tidak perlu Active Response di Manager | Butuh kredensial SSH Shuffle → Target |
-| B — Wazuh Active Response | `active-response` di Manager memicu `firewall-drop` script di Agent | Tidak butuh Shuffle untuk block, lebih cepat | Kurang fleksibel untuk enrichment branching |
+| **A — Shuffle SSH (chosen)** | Shuffle app `SSH` → `sudo iptables -A INPUT -s <ip> -j DROP` | Centralized in playbook, auditable, no Active Response needed on Manager | Requires Shuffle → Target SSH credentials |
+| B — Wazuh Active Response | `active-response` on Manager triggers `firewall-drop` script on Agent | No Shuffle needed for blocking, slightly faster | Less flexible for enrichment-based branching |
 
-Perintah verifikasi:
+Verification commands:
 ```bash
 sudo iptables -L -n --line-numbers | grep <attacker-ip>
 sudo ufw status numbered | grep <attacker-ip>
@@ -180,20 +180,20 @@ sudo ufw delete deny from <attacker-ip>
 
 ### 3.6 Notification — Discord (Webhook)
 
-> **Menggantikan Telegram Bot API** — Discord dipilih untuk embed yang lebih kaya, setup webhook yang lebih sederhana, dan integrasi native Shuffle.
+> **Replaces Telegram Bot API** — Discord was chosen for richer embeds, simpler webhook setup, and native Shuffle integration.
 
-**Mengapa Discord (bukan Telegram Bot):**
-- Tidak perlu `BotFather` / `chat_id` — cukup 1 Webhook URL per channel.
-- Mendukung rich `embeds` (warna, field, footer, timestamp) — insiden lebih mudah dibaca analis.
-- Rate limit webhook `30 req/min` cukup untuk burst brute force.
-- Shuffle memiliki app `Discord` dan generic `Webhook` — tanpa custom code.
+**Why Discord (not Telegram Bot):**
+- No `BotFather` / `chat_id` needed — a single Webhook URL per channel is enough.
+- Rich `embeds` support (color, fields, footer, timestamp) — incidents are easier for analysts to read.
+- Webhook rate limit `30 req/min` is sufficient for brute-force bursts.
+- Shuffle has native `Discord` and generic `Webhook` apps — no custom code required.
 
-**Setup (sekali):**
-1. Discord Server → `Server Settings → Integrations → Webhooks → New Webhook` → pilih channel `#soc-alerts` → `Copy Webhook URL` → bentuk `https://discord.com/api/webhooks/{id}/{token}`.
-2. Shuffle → `Environments` → tambah secret `DISCORD_WEBHOOK_URL`.
-3. Playbook step `Discord` → `Webhook POST` ke URL tersebut.
+**One-time setup:**
+1. Discord Server → `Server Settings → Integrations → Webhooks → New Webhook` → select channel `#soc-alerts` → `Copy Webhook URL` → format `https://discord.com/api/webhooks/{id}/{token}`.
+2. Shuffle → `Environments` → add secret `DISCORD_WEBHOOK_URL`.
+3. Playbook step `Discord` → `Webhook POST` to that URL.
 
-**Payload Embed (auto-block path):**
+**Embed payload (auto-block path):**
 ```json
 {
   "username": "Wazuh-Shuffle SOAR",
@@ -215,7 +215,7 @@ sudo ufw delete deny from <attacker-ip>
 }
 ```
 
-**Payload Escalate (low confidence, tidak auto-block):**
+**Escalation payload (low confidence, no auto-block):**
 ```json
 {
   "embeds": [{
@@ -230,16 +230,16 @@ sudo ufw delete deny from <attacker-ip>
 }
 ```
 
-**Alternatif yang dipertimbangkan:**
-- Discord Bot API (`bot token` + Gateway) — ditolak, overkill untuk notifikasi satu arah.
-- Telegram — ditolak sesuai kebutuhan proyek saat ini (dapat ditambah kembali sebagai fallback multi-channel di future work).
+**Alternatives considered:**
+- Discord Bot API (`bot token` + Gateway) — rejected, overkill for one-way notifications.
+- Telegram — rejected per current project requirements (can be re-added later as a multi-channel fallback).
 
-**Keamanan:**
-- Webhook URL bersifat secret setara password — jangan commit ke git, jangan log full URL.
-- Rotasi: `Integrations → Webhook → Regenerate` jika bocor.
-- Validasi: Shuffle tidak mengekspos URL di `playbook-export.json` (gunakan `$env.DISCORD_WEBHOOK_URL`).
+**Security:**
+- The Webhook URL is a secret equivalent to a password — never commit it, never log the full URL.
+- Rotation: `Integrations → Webhook → Regenerate` if leaked.
+- Validation: Shuffle does not expose the URL in `playbook-export.json` (use `$env.DISCORD_WEBHOOK_URL`).
 
-**Verifikasi manual:**
+**Manual verification:**
 ```bash
 curl -H "Content-Type: application/json" \
   -d '{"embeds":[{"title":"Test Wazuh-Shuffle","description":"IP 1.2.3.4 blocked — test embed"}]}' \
@@ -285,7 +285,7 @@ sequenceDiagram
     An->>M: (optional) review in Wazuh Dashboard
 ```
 
-### 4.2 Contoh Alert JSON (Wazuh → Shuffle)
+### 4.2 Example Alert JSON (Wazuh → Shuffle)
 
 ```json
 {
@@ -304,30 +304,30 @@ sequenceDiagram
 
 ### 5.1 Rule Tuning
 
-- `frequency` dan `timeframe` dipilih `5/60` agar sensitif untuk lab Hydra (default Hydra 16 threads → 5 fails dalam <5 detik). Untuk produksi, pertimbangkan `10/120` untuk mengurangi false positive dari typo user.
-- `same_source_ip` memastikan threshold per IP, bukan global.
-- Level `10` memicu integrasi Shuffle (filter `level >=10`).
+- `frequency` and `timeframe` are set to `5/60` to be sensitive for lab Hydra (default Hydra 16 threads → 5 failures in <5 seconds). For production, consider `10/120` to reduce false positives from user typos.
+- `same_source_ip` ensures the threshold is per-IP, not global.
+- Level `10` triggers the Shuffle integration (filter `level >=10`).
 
 ### 5.2 False Positive Mitigation
 
-- Whitelist IP analis / CI: `<ignore><src_ip>192.168.56.1</src_ip></ignore>` di rule.
-- Korelasi dengan `isWhitelisted` AbuseIPDB.
-- Future: adaptive threshold berdasarkan baseline login normal.
+- Whitelist analyst / CI IPs: `<ignore><src_ip>192.168.56.1</src_ip></ignore>` in the rule.
+- Correlate with AbuseIPDB `isWhitelisted`.
+- Future: adaptive threshold based on normal login baseline.
 
 ### 5.3 Testing
 
 ```bash
-# Simulasi log tanpa Hydra (untuk test rule)
+# Simulate logs without Hydra (for rule testing)
 logger -t sshd "Failed password for root from 192.168.56.10 port 12345 ssh2"
-# Ulang 5x dalam 60s, lalu cek:
+# Repeat 5x within 60s, then check:
 tail -f /var/ossec/logs/alerts/alerts.json | jq 'select(.rule.id=="100200")'
 ```
 
 ---
 
-## 6. Response Logic (Detail Playbook)
+## 6. Response Logic (Playbook Detail)
 
-Lihat §3.3 untuk tabel step. Decision tree:
+See §3.3 for the step table. Decision tree:
 
 ```
 alert(100200) → AbuseIPDB score?
@@ -336,7 +336,7 @@ alert(100200) → AbuseIPDB score?
   └─ <25 → notify only (yellow embed) + manual review
 ```
 
-**Rollback:** Analis dapat unblock via Discord command (future) atau manual SSH:
+**Rollback:** Analysts can unblock via a Discord command (future) or manual SSH:
 ```bash
 sudo iptables -D INPUT -s <ip> -j DROP
 ```
@@ -361,48 +361,48 @@ sudo iptables -D INPUT -s <ip> -j DROP
 
 **Firewall requirements:**
 - Target → Manager: `1514/TCP` outbound.
-- Shuffle → Target: `22/TCP` inbound (restricted to Shuffle IP / VPN).
-- Target/Manager → Internet: `443/TCP` untuk AbuseIPDB & Discord.
+- Shuffle → Target: `22/TCP` inbound (restricted to Shuffle IPs / VPN).
+- Target/Manager → Internet: `443/TCP` for AbuseIPDB & Discord.
 
 ---
 
 ## 8. Security & Safety
 
-- **Etika:** Simulasi hanya terhadap VM milik sendiri di jaringan terisolasi (Host-Only). Jangan gunakan wordlist terhadap host publik — lihat `README.md#Ethics`.
-- **Secrets:** `ABUSEIPDB_API_KEY` dan `DISCORD_WEBHOOK_URL` tidak di-commit. Gunakan Shuffle Secrets / env var. Contoh `.env.example`:
+- **Ethics:** Simulations are performed only against self-owned VMs on an isolated network (Host-Only). Do not use wordlists against public hosts — see `README.md#Ethics`.
+- **Secrets:** `ABUSEIPDB_API_KEY` and `DISCORD_WEBHOOK_URL` are never committed. Use Shuffle Secrets / env vars. Example `.env.example`:
   ```
   ABUSEIPDB_API_KEY=your_key_here
   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/yyy
   ```
-- **Least privilege:** User SSH Shuffle hanya boleh `sudo iptables` / `sudo ufw`, bukan root penuh (via `/etc/sudoers.d/shuffle`).
-- **Log retention:** `auth.log` dan `alerts.json` di-rotate harian.
+- **Least privilege:** The Shuffle SSH user is only allowed `sudo iptables` / `sudo ufw`, not full root (via `/etc/sudoers.d/shuffle`).
+- **Log retention:** `auth.log` and `alerts.json` are rotated daily.
 
 ---
 
 ## 9. Observability & Metrics
 
-| Metric | Definisi | Cara ukur |
+| Metric | Definition | How to measure |
 |---|---|---|
-| MTTD | `alert_timestamp - first_failed_login` | Bandingkan `auth.log` vs `alerts.json` |
+| MTTD | `alert_timestamp - first_failed_login` | Compare `auth.log` vs `alerts.json` |
 | MTTR | `block_timestamp - alert_timestamp` | `iptables` log / Shuffle execution log vs alert |
-| Manual baseline | Waktu analis lihat Dashboard → SSH manual `iptables` | Stopwatch lab |
+| Manual baseline | Time for analyst to see Dashboard → SSH `iptables` manually | Lab stopwatch |
 
-Hasil akan diisi di `README.md#Results` setelah pengujian. Future: dashboard Grafana dari Wazuh Indexer.
+Results will be filled in `README.md#Results` after testing. Future: Grafana dashboard from the Wazuh Indexer.
 
 ---
 
 ## 10. Trade-offs & Future Work
 
-| Keputusan | Trade-off |
+| Decision | Trade-off |
 |---|---|
-| Shuffle SSH vs Wazuh Active Response | SSH lebih auditable & branching, tapi butuh kredensial tambahan |
-| Discord Webhook vs Bot | Webhook simpel, tapi tidak bisa interaktif (button unblock) — Bot untuk fase 2 |
-| Threshold 5/60 | Sensitif untuk demo, tapi noise di produksi — perlu tuning |
+| Shuffle SSH vs Wazuh Active Response | SSH is more auditable & branchable, but requires extra credentials |
+| Discord Webhook vs Bot | Webhook is simple, but not interactive (no unblock button) — Bot for phase 2 |
+| Threshold 5/60 | Sensitive for demos, but noisy in production — needs tuning |
 
 **Roadmap:**
-- Integrasi dengan deteksi SQLi & Web Shell (PHP-MySQL app) sebagai Automated IR terpadu.
-- Adaptive branching: ML-based confidence, bukan static 75.
-- Dashboard MTTD/MTTR + Discord thread per incident.
+- Integration with SQLi & Web Shell detection (PHP-MySQL app) as a unified Automated IR system.
+- Adaptive branching: ML-based confidence instead of static 75.
+- MTTD/MTTR dashboard + Discord thread per incident.
 - Multi-channel fallback: Discord primary, Telegram optional.
 
 ---
@@ -412,16 +412,16 @@ Hasil akan diisi di `README.md#Results` setelah pengujian. Future: dashboard Gra
 ```
 .
 ├── docs/
-│   ├── architecture.md       # ← file ini
-│   └── screenshots/          # screenshot Wazuh alert, Shuffle workflow, Discord embed, iptables
+│   ├── architecture.md       # ← this file
+│   └── screenshots/          # Wazuh alert, Shuffle workflow, Discord embed, iptables
 ├── wazuh/
 │   ├── custom-rules/         # local_rules.xml (rule 100200/100201)
 │   └── ossec-agent-conf/     # ossec.conf ( /var/log/auth.log )
 ├── shuffle/
-│   └── playbook-export.json  # export workflow (tanpa secrets)
+│   └── playbook-export.json  # exported workflow (without secrets)
 ├── attack-simulation/
 │   └── wordlist.txt
-└── README.md                 # ringkasan + link ke dokumen ini
+└── README.md                 # summary + link to this document
 ```
 
 - Wazuh docs: https://documentation.wazuh.com/
