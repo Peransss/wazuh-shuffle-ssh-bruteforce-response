@@ -70,9 +70,9 @@ flowchart LR
 
 | Node | Role | Network | Access |
 |---|---|---|---|
-| Attacker VM | Host + Ncrack | `192.168.56.10/24` (Host-Only / NAT lab) | Only to Target:22 |
-| Target VM | Ubuntu Server + sshd + Wazuh Agent | `192.168.56.20/24` | 22 (SSH), 1514 (to Manager) |
-| Wazuh Manager | SIEM | `192.168.56.30` or cloud | 1514, 55000 (API), 443 (Dashboard) |
+| Attacker VM | Host + Ncrack | `192.168.1.12/24` (Host-Only / NAT lab) | Only to Target:22 |
+| Target VM | Ubuntu Server + sshd + Wazuh Agent | `192.168.1.10/24` | 22 (SSH), 1514 (to Manager) |
+| Wazuh Manager | SIEM | `192.168.1.11` or cloud | 1514, 55000 (API), 443 (Dashboard) |
 | Shuffle | SOAR (cloud SaaS / self-hosted) | Internet / lab | Webhook inbound, egress to Target:22 & Discord |
 | Discord | Notification | Internet | Webhook URL |
 
@@ -122,7 +122,7 @@ All lab nodes are isolated on a Host-Only / Internal NAT VirtualBox network. No 
   <integration>
     <name>shuffle</name>
     <hook_url>https://shuffler.io/api/v1/hooks/<webhook_id></hook_url>
-    <level>10</level>
+    <level>3</level>
     <group>ssh_brute_force</group>
     <alert_format>json</alert_format>
   </integration>
