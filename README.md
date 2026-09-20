@@ -68,13 +68,14 @@ SSH is one of the most commonly targeted services for brute force attacks on int
 6. **Auto-response** — If the confidence score is high, Shuffle executes the IP block (via an SSH command to the VM running `iptables`/`ufw`, or by triggering Wazuh active response)
 7. **Notification** — Shuffle sends an incident summary (IP, timestamp, attempt count, block status) to the analyst via Discord Webhook (`#soc-alerts` embed)
 ## 📊 Results & Evaluation
- 
+
 | Metric | Manual | Automated (Wazuh + Shuffle) |
 |---|---|---|
-| MTTD (Mean Time to Detect) | *fill in after testing* | *fill in after testing* |
-| MTTR (Mean Time to Respond) | *fill in after testing* | *fill in after testing* |
- 
-> Note: fill in the table above with actual test results (compare manual analyst detection time vs. Wazuh's automated detection time, and manual response time vs. Shuffle's automated response time).
+| MTTD (Mean Time to Detect) | *pending — fill after lab run* | *pending — fill after lab run* |
+| MTTR (Mean Time to Respond) | *pending — fill after lab run* | *pending — fill after lab run* |
+
+> **How to measure:** see `docs/architecture.md` §9 (compare `auth.log` first `Failed password` → `alerts.json` `100200`, and `alerts.json` → Shuffle execution log / `iptables` timestamp). Track on the `Host-Only` lab with stopwatch.
+> Results will be committed after the next test run; open an issue if you have baseline numbers.
  
 ## 📸 Documentation
  
@@ -85,37 +86,57 @@ SSH is one of the most commonly targeted services for brute force attacks on int
 - [ ] `iptables -L` / `ufw status` output showing the blocked IP
 - [ ] Short demo video (optional, highly recommended)
 ## 🚀 How to Reproduce
- 
+
 ```bash
+# 0. Configure secrets (never commit)
+cp .env.example .env  # fill ABUSEIPDB_API_KEY, DISCORD_WEBHOOK_URL, TARGET_HOST
+# Wazuh Manager: copy wazuh/custom-rules/local_rules.xml → /var/ossec/etc/rules/local_rules.xml
+# Target Agent : copy wazuh/ossec-agent-conf/ossec.conf → /var/ossec/etc/ossec.conf (set <address>)
+
 # 1. Run the SSH brute force simulation
-hydra -l root -P wordlist.txt ssh://<target-vm-ip>
- 
+hydra -l root -P attack-simulation/wordlist.txt ssh://<target-vm-ip>
+# alternative with split lists:
+hydra -L attack-simulation/common_username.txt -P attack-simulation/common_password.txt ssh://<target-vm-ip> -t 16
+
+# 1b. Rule test without Hydra (fires 100200: 5 fails/60s)
+for i in {1..6}; do logger -t sshd "Failed password for root from 192.168.56.10 port 5${i}000 ssh2"; done
+
 # 2. Monitor alerts in the Wazuh dashboard
-# Log in to the Wazuh dashboard > Security Events > filter by rule group "authentication_failures"
- 
+# Log in to the Wazuh dashboard > Security Events > filter by rule group "authentication_failures" / rule 100200
+
 # 3. Check playbook execution in Shuffle
-# Log in to Shuffle > Workflows > view execution log
- 
+# Log in to Shuffle > Workflows > wazuh-shuffle-ssh-bruteforce-response > Executions
+# Import: shuffle/playbook-export.json (sanitized; secrets via $env.*)
+
 # 4. Verify the block on the target VM
-sudo iptables -L -n | grep <attacker-ip>
+sudo iptables -L -n --line-numbers | grep <attacker-ip>
 # or
-sudo ufw status | grep <attacker-ip>
+sudo ufw status numbered | grep <attacker-ip>
+# Rollback:
+sudo iptables -D INPUT -s <attacker-ip> -j DROP; sudo ufw delete deny from <attacker-ip>
 ```
  
 ## 📁 Repo Structure
- 
+
 ```
 .
 ├── wazuh/
-│   ├── custom-rules/         # Custom rule XML for SSH brute force detection
-│   └── ossec-agent-conf/     # Agent config (log path /var/log/auth.log)
+│   ├── custom-rules/local_rules.xml   # Custom threshold rules 100200/100201 (Manager)
+│   ├── ossec-agent-conf/ossec.conf    # Agent config (log path /var/log/auth.log → Manager)
+│   └── ossec.conf                     # Manager config (integration → Shuffle webhook, level 10)
 ├── shuffle/
-│   └── playbook-export.json  # Exported Shuffle workflow
+│   ├── playbook-export.json                           # Sanitized Shuffle workflow (canonical, secrets via $env.*)
+│   └── wazuh-shuffle-ssh-bruteforce-response (11).json # Original export (kept, now also sanitized)
 ├── attack-simulation/
-│   └── wordlist.txt
+│   ├── common_username.txt  # 82k usernames (729 KB)
+│   ├── common_password.txt  # 1.3M passwords (11 MB)
+│   ├── wordlist.txt -> common_password.txt  # compat shim for hydra -P wordlist.txt
+│   └── README.md
 ├── docs/
 │   ├── architecture.md       # Detailed architecture (components, flow, Discord design)
-│   └── screenshots/
+│   └── screenshots/          # Diagram-Shuffle.png, Testing_Webhook.png, etc.
+├── .env.example
+├── .gitignore
 └── README.md
 ```
  

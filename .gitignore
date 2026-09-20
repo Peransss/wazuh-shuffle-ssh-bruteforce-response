@@ -1,0 +1,37 @@
+# Secrets and local env
+.env
+*.env
+*.pem
+*.key
+*.p12
+id_rsa*
+shuffle/auth.json
+
+# Wazuh certs / runtime
+*.cert
+*.key
+
+# Lab wordlists (large) — keep samples in repo, download full via script if needed
+# Uncomment to ignore the large files after initial commit if you want to slim history:
+# attack-simulation/common_password.txt
+# attack-simulation/common_username.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+*.log
+
+# Python / temp
+__pycache__/
+*.pyc
+/tmp/
+
+# Shuffle exports with secrets (use playbook-export.json sanitized)
+shuffle/*(*).json
+
+# Build
+dist/

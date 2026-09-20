@@ -149,7 +149,7 @@ All lab nodes are isolated on a Host-Only / Internal NAT VirtualBox network. No 
 
 **Failure handling:** 3 retries for SSH, 10s timeout for AbuseIPDB. If Discord fails, the Shuffle execution is still marked successful and logged.
 
-Playbook export: `shuffle/playbook-export.json`.
+Playbook export: `shuffle/playbook-export.json` (canonical, sanitized; secrets via `$env.DISCORD_WEBHOOK_URL`, `$env.ABUSEIPDB_API_KEY`, `$env.TARGET_HOST`). Legacy export `shuffle/wazuh-shuffle-ssh-bruteforce-response (11).json` is also sanitized.
 
 ### 3.4 Threat Intelligence — AbuseIPDB API
 
@@ -413,14 +413,20 @@ Results will be filled in `README.md#Results` after testing. Future: Grafana das
 .
 ├── docs/
 │   ├── architecture.md       # ← this file
-│   └── screenshots/          # Wazuh alert, Shuffle workflow, Discord embed, iptables
+│   └── screenshots/          # Diagram-Shuffle.png, Testing_Webhook.png, Wazuh alert, Discord embed
 ├── wazuh/
-│   ├── custom-rules/         # local_rules.xml (rule 100200/100201)
-│   └── ossec-agent-conf/     # ossec.conf ( /var/log/auth.log )
+│   ├── custom-rules/local_rules.xml      # rule 100200/100201 (Manager)
+│   ├── ossec-agent-conf/ossec.conf       # Agent config (log path /var/log/auth.log)
+│   └── ossec.conf                        # Manager config (integration → Shuffle, level 10)
 ├── shuffle/
-│   └── playbook-export.json  # exported workflow (without secrets)
+│   ├── playbook-export.json                           # sanitized workflow (canonical, $env.* secrets)
+│   └── wazuh-shuffle-ssh-bruteforce-response (11).json # original export (sanitized, legacy name)
 ├── attack-simulation/
-│   └── wordlist.txt
+│   ├── common_username.txt / common_password.txt
+│   ├── wordlist.txt -> common_password.txt
+│   └── README.md
+├── .env.example
+├── .gitignore
 └── README.md                 # summary + link to this document
 ```
 
@@ -433,4 +439,4 @@ Results will be filled in `README.md#Results` after testing. Future: Grafana das
 ---
 
 *Author: Fransiskus Sutanto — Informatics Engineering, Universitas Bunda Mulia*
-*Last updated: 2026-09-02*
+*Last updated: 2026-09-20 — sanitized Shuffle export (env var secrets), added `wazuh/custom-rules/local_rules.xml`, `wazuh/ossec-agent-conf/ossec.conf`, `.env.example`, `.gitignore`, `attack-simulation/README.md` + `wordlist.txt` shim; Manager integration tightened to `level 10` / `group ssh_brute_force`*
